@@ -1,0 +1,15 @@
+services:
+  - type: worker
+    name: ai-telegram-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: API_URL
+        value: https://claude-gemma-deploy--mraboodaihakerd.replit.app/api/v1/chat/completions
+      - key: MODEL
+        value: claude-opus-4-7

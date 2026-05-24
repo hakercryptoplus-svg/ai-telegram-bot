@@ -1,6 +1,8 @@
 import os
 import logging
+import threading
 import requests
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -11,9 +13,9 @@ from telegram.ext import (
 )
 
 # ── إعدادات ──────────────────────────────────────────────
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 API_URL        = os.environ.get("API_URL", "https://claude-gemma-deploy--mraboodaihakerd.replit.app/api/v1/chat/completions")
-API_KEY        = os.environ["API_KEY"]
+API_KEY        = os.environ.get("API_KEY")
 MODEL          = os.environ.get("MODEL", "claude-opus-4-7")
 
 logging.basicConfig(
@@ -24,6 +26,25 @@ logger = logging.getLogger(__name__)
 
 # ── تخزين سجل المحادثات لكل مستخدم ──────────────────────
 user_histories: dict[int, list[dict]] = {}
+
+# ── Health-check HTTP server (مطلوب لـ Render Web Service) ──
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        pass  # إخفاء سجلات HTTP لتنظيف الـ logs
+
+
+def run_health_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    logger.info(f"Health-check server running on port {port}")
+    server.serve_forever()
+
 
 # ── الأوامر ───────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -82,6 +103,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── تشغيل البوت ──────────────────────────────────────────
 def main():
+    # التحقق من متغيرات البيئة المطلوبة
+    if not TELEGRAM_TOKEN:
+        raise ValueError(
+            "❌ TELEGRAM_TOKEN غير مضبوط. "
+            "أضفه من: Render Dashboard → Environment Variables"
+        )
+    if not API_KEY:
+        raise ValueError(
+            "❌ API_KEY غير مضبوط. "
+            "أضفه من: Render Dashboard → Environment Variables"
+        )
+
+    # تشغيل health-check server في background thread حتى يتعرف عليه Render
+    health_thread = threading.Thread(target=run_health_server, daemon=True)
+    health_thread.start()
+
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset", reset))

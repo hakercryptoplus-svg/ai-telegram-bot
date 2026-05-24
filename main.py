@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 import threading
 import requests
@@ -40,7 +41,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 def run_health_server():
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     logger.info(f"Health-check server running on port {port}")
     server.serve_forever()
@@ -98,8 +99,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── تشغيل البوت ──────────────────────────────────────────
 def main():
-    # ✅ الإصلاح: تشغيل health-check server أولاً قبل أي شيء
-    # حتى يتعرف عليه Render حتى لو فشلت الخطوات التالية
+    # ✅ الإصلاح: إنشاء event loop صريح قبل run_polling
+    # (مطلوب في Python 3.10+ حيث لا يُنشأ event loop تلقائياً)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # تشغيل health-check server في خيط منفصل
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
     logger.info("Health-check server started.")

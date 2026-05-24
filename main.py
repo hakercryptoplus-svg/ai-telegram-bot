@@ -66,14 +66,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id   = update.effective_user.id
     user_text = update.message.text
 
-    # أرسل رسالة "جارٍ الكتابة..."
     await context.bot.send_chat_action(update.effective_chat.id, action="typing")
 
-    # بناء سجل المحادثة
     history = user_histories.setdefault(user_id, [])
     history.append({"role": "user", "content": user_text})
 
-    # استدعاء API
     try:
         response = requests.post(
             API_URL,
@@ -96,28 +93,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"API error: {e}")
         reply_text = f"⚠️ حدث خطأ أثناء الاتصال بالنموذج:\n`{e}`"
 
-    # أضف رد النموذج للسجل
     history.append({"role": "assistant", "content": reply_text})
-
     await update.message.reply_text(reply_text)
 
 # ── تشغيل البوت ──────────────────────────────────────────
 def main():
-    # التحقق من متغيرات البيئة المطلوبة
-    if not TELEGRAM_TOKEN:
-        raise ValueError(
-            "❌ TELEGRAM_TOKEN غير مضبوط. "
-            "أضفه من: Render Dashboard → Environment Variables"
-        )
-    if not API_KEY:
-        raise ValueError(
-            "❌ API_KEY غير مضبوط. "
-            "أضفه من: Render Dashboard → Environment Variables"
-        )
-
-    # تشغيل health-check server في background thread حتى يتعرف عليه Render
+    # ✅ الإصلاح: تشغيل health-check server أولاً قبل أي شيء
+    # حتى يتعرف عليه Render حتى لو فشلت الخطوات التالية
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
+    logger.info("Health-check server started.")
+
+    # التحقق من متغيرات البيئة المطلوبة
+    if not TELEGRAM_TOKEN:
+        logger.error("❌ TELEGRAM_TOKEN غير مضبوط. أضفه من: Render Dashboard → Environment Variables")
+        raise ValueError("TELEGRAM_TOKEN is not set.")
+    if not API_KEY:
+        logger.error("❌ API_KEY غير مضبوط. أضفه من: Render Dashboard → Environment Variables")
+        raise ValueError("API_KEY is not set.")
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
